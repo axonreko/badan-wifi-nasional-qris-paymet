@@ -459,13 +459,42 @@ def page_buy():
 
 def page_pay(pay):
     cfg = pay_config()
-    if pay_mode(cfg) == "demo":
+    if pay_mode(cfg) == "demo" and pay.get("status") == "paid":
+        ocode = pay.get("order_code", "")
         action = (
+            "<div class=\"order-box\"><div class=\"meta\" style=\"text-align:center\">"
+            "Kode order kamu:</div>"
+            "<div class=\"order-code\">" + ocode + "</div></div>"
+            "<div class=\"badge b-green\" style=\"display:inline-block\">"
+            "Simulasi: LUNAS ✅</div>"
+            "<div class=\"steps\">"
+            "Sekarang coba klaim:<br>"
+            "1. Buka halaman utama portal<br>"
+            "2. Klik <b>Klaim akses</b><br>"
+            "3. Masukkan kode: <b>" + ocode + "</b>"
+            "</div>")
+        qr_block = ""
+        return page("Badan Wifi Nasional - Bayar QRIS",
+            "<h1 style=\"text-align:center\">Bayar " + rp(pay["amount"]) + "</h1>\n"
+            "<p class=\"sub\" style=\"text-align:center\">Paket <b>" + pay["label"] +
+            "</b></p>\n" + qr_block + action)
+    if pay_mode(cfg) == "demo":
+        ocode = pay.get("order_code", "")
+        action = (
+            "<div class=\"order-box\"><div class=\"meta\" style=\"text-align:center\">"
+            "Kode order (simulasi):</div>"
+            "<div class=\"order-code\">" + ocode + "</div></div>"
             "<form method=\"POST\" action=\"/pay/confirm\" style=\"margin-top:18px\">"
             "<input type=\"hidden\" name=\"id\" value=\"" + pay["id"] + "\">"
-            "<button type=\"submit\">Saya Sudah Bayar (Simulasi)</button></form>"
+            "<button type=\"submit\">Simulasi: Tandai Sudah Bayar</button></form>"
+            "<div class=\"steps\">"
+            "<b>Cara coba alur asli:</b><br>"
+            "1. Klik tombol di atas (pembayaran ditandai lunas)<br>"
+            "2. Buka halaman utama → klik <b>Klaim akses</b><br>"
+            "3. Masukkan kode order di atas → internet aktif"
+            "</div>"
             "<div class=\"meta\" style=\"text-align:center\">Mode demo: "
-            "klik tombol untuk mensimulasikan pembayaran berhasil.</div>")
+            "tidak ada uang asli, hanya simulasi alur.</div>")
         qr_block = ("<img class=\"qr\" src=\"/pay/qr?id=" + pay["id"] +
                     "\" alt=\"QRIS\">")
     else:
@@ -875,9 +904,12 @@ class H(BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.end_headers()
                 return
-            activate_payment(pay_id)
-            self._send(success("QRIS-" + pay_id[:6].upper(),
-                               int(pay["duration"])))
+            # demo: hanya tandai lunas, user harus klaim via kode order
+            # (meniru alur asli: bayar -> klaim)
+            pay["status"] = "paid"
+            pay["paid_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+            save_pays(pays)
+            self._send(page_pay(pay))
             return
         if u.path == "/admin/mayar":
             if self._need_auth():

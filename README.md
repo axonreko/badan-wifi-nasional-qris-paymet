@@ -1,70 +1,42 @@
-# Badan Wifi Nasional — Modul Pembayaran QRIS (Mayar)
+# Badan Wifi Nasional — Portal + Pembayaran QRIS (Mayar)
 
-Modul pembayaran paket internet via QRIS untuk captive portal,
-pakai **Mayar API** (https://docs.mayar.id).
+Repo ini berisi **varian portal dengan pembayaran QRIS**.
+Untuk portal biasa (voucher saja), lihat repo `badan-wifi-nasional`.
 
-## Status
+## Isi
 
-- **Mode `demo`**: jalan tanpa API key. QR dibuat lokal, pembayaran
-  disimulasikan via tombol. Untuk uji alur UX.
-- **Mode `mayar`**: pakai API asli Mayar, default ke **sandbox**
-  (`https://api.mayar.club/hl/v2`). Tinggal isi `api_key` di config
-  → langsung bisa transaksi sandbox seperti aslinya.
+| File | Fungsi |
+|---|---|
+| `portal.py` | Portal lengkap: voucher + beli paket QRIS + klaim + panel admin |
+| `qris/mayar.py` | Klien API Mayar asli (sandbox `api.mayar.club` / production `api.mayar.id`) |
+| `qris/service.py` | Logika pembayaran (mode demo / mayar) |
+| `public_pay.py` | Halaman pembayaran publik via Tailscale Funnel (bisa dibuka pakai kuota HP) |
+| `funnel_proxy.py` | Reverse proxy untuk Funnel (`/bayar` → halaman publik) |
+| `config.example.json` | Contoh konfigurasi pembayaran |
 
-## Yang perlu disiapkan (untuk mode mayar)
+## Fitur QRIS
 
-1. Daftar di [mayar.id](https://mayar.id), verifikasi akun.
-2. Di dashboard Mayar (sandbox dulu), buat:
-   - 1 produk **Membership** bernama mis. "Voucher Wifi"
-   - 1 tier per paket (harga = harga paket), catat `tier_id`-nya
-   - Catat `product_id`
-3. Buat **API key** (read/write) di menu Integrasi → API Keys.
-4. Buat **webhook token** bebas (string acak), daftarkan webhook URL:
-   `https://<domain-anda>/webhook/mayar?token=<token-anda>`
+- **Beli paket** (`/buy`): 1 jam Rp2rb / 3 jam Rp5rb / 12 jam Rp10rb / 1 hari Rp15rb
+- **Bayar** (`/pay`): QR + link pembayaran publik + kode order
+- **Klaim** (`/claim`): bayar pakai kuota (matikan WiFi) → connect lagi → masukkan kode
+- **Link publik**: `https://<funnel>/bayar/<KODE>` — kode + tombol bayar + status live
+- **Panel admin**: pengaturan Mayar (mode, API key, product ID) + riwayat pembayaran
+- **Keamanan**: rate limiting, anti-XSS, kode acak, 1 kode = 1 HP aktif
 
-## Konfigurasi
+## Instalasi di STB
 
 ```bash
-cp config.example.json config.json
-# edit config.json:
-#   "mode": "mayar",
-#   "mayar": {
-#     "api_key": "PASTE_API_KEY",
-#     "base": "https://api.mayar.club/hl/v2",   # sandbox
-#     # "base": "https://api.mayar.id/hl/v2",   # production (nanti)
-#     "product_id": "...",
-#     "tiers": {"p1": "...", "p2": "...", "p3": "...", "p4": "..."},
-#     "webhook_token": "..."
-#   }
+git clone https://github.com/axonreko/badan-wifi-nasional-qris-paymet.git
+cd badan-wifi-nasional-qris-paymet
+# copy portal.py + qris/ ke /opt/portal/, lalu restart portal-web
+# (atau pakai install.sh dari repo badan-wifi-nasional lalu timpa portal.py)
 ```
 
-Paket default (bisa diubah di config): 1 jam Rp2.000 · 3 jam Rp5.000 ·
-12 jam Rp10.000 · 1 hari Rp15.000.
+## Aktifkan Mayar asli
 
-## Cara kerja (mode mayar)
+1. Daftar di [mayar.id](https://mayar.id), verifikasi akun
+2. Buat produk Membership + tier per paket di dashboard (sandbox dulu)
+3. Buat API key → paste di panel admin → ganti mode ke Mayar
+4. Daftarkan webhook: `https://<funnel>/webhook/mayar?token=<token>`
 
-1. `create_payment(paket, ip)` → `POST /memberships/members/create`
-   lalu `POST /memberships/members/{id}/invoice/create`
-   → user diarahkan ke `bill_url` Mayar, bayar via QRIS/e-wallet/VA.
-2. Mayar mengirim webhook `payment.received` (atau portal polling
-   `GET /invoices/{id}`) → status `SUCCESS`.
-3. Callback `on_paid(ip, duration, ref)` dipanggil → portal mengaktifkan
-   internet untuk IP tersebut selama durasi paket.
-
-Lihat `INTEGRATION.md` untuk contoh penyambungan ke `portal.py`.
-
-## Struktur
-
-```
-qris/
-  __init__.py
-  mayar.py     # klien API Mayar (sandbox + production)
-  service.py   # orkestrasi: demo | mayar
-config.example.json
-INTEGRATION.md
-```
-
-## Keamanan
-
-- Jangan commit `config.json` yang berisi API key asli.
-- Webhook memakai token rahasia di query URL (Mayar tidak sign body).
+Lihat `INTEGRATION.md` untuk detail teknis.
